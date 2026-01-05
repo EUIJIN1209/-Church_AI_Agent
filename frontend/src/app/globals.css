@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+/* 공통 레이아웃 유틸리티 */
+.app-shell {
+  @apply flex min-h-screen bg-slate-50 text-slate-900;
+}
+
+.sidebar {
+  @apply flex w-[260px] flex-col border-r border-slate-200 bg-white/90 px-4 py-4 backdrop-blur;
+}
+
+.sidebar-nav-item {
+  @apply flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer;
+}
+
+.sidebar-nav-item-active {
+  @apply bg-slate-900 text-white hover:bg-slate-900;
+}
+
+.main-panel {
+  @apply flex-1 flex flex-col px-8 py-6;
+}
+
+.card {
+  @apply rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm;
+}
+
+.chip {
+  @apply inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600;
+}
