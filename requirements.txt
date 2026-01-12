@@ -21,6 +21,7 @@ filetype==1.2.0
 frozenlist==1.8.0
 fsspec==2024.6.1
 google-ai-generativelanguage==0.7.0
+# google-generativeai==0.8.3
 google-api-core==2.26.0
 google-api-python-client==2.184.0
 google-auth==2.41.1
@@ -114,3 +115,4 @@ zstandard==0.24.0
 langgraph==0.2.68
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+
