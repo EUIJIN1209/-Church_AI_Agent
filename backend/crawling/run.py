@@ -103,14 +103,15 @@ def main():
 
     try:
         sermons = crawler.crawl()
-        print(f"\n✓ Successfully crawled {len(sermons)} sermons")
+        print(f"\n[OK] Successfully crawled {len(sermons)} sermons")
         return 0
     except KeyboardInterrupt:
-        print("\n\n⚠ Interrupted by user")
+        print("\n\n[!] Interrupted by user")
         return 1
     except Exception as e:
-        print(f"\n\n✗ Fatal error: {e}")
+        print(f"\n\n[X] Fatal error: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
     finally:

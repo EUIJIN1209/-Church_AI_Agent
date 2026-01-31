@@ -1,6 +1,6 @@
-# Seokang Church Sermon Crawler
+# Daedeok Church Sermon Crawler
 
-교회 주보 이미지를 OCR로 분석하여 설교 데이터를 자동으로 수집하는 크롤러입니다.
+대덕교회 주보 이미지를 OCR로 분석하여 설교 데이터를 자동으로 수집하는 크롤러입니다.
 
 ## 📁 프로젝트 구조
 
@@ -23,7 +23,7 @@ backend/crawling/
 │
 ├── run.py                     # 실행 스크립트
 ├── README.md                  # 문서 (이 파일)
-└── crawl_seokang.py          # [Deprecated] 기존 파일
+└── crawl_daedeok.py          # [Deprecated] 기존 파일
 ```
 
 ## 🚀 빠른 시작
@@ -48,7 +48,7 @@ python run.py
 ### 3. 전체 크롤링
 
 ```bash
-# 모든 페이지 (1-17) 크롤링
+# 모든 페이지 크롤링 (페이지 수는 사이트에 따라 자동 조정)
 python run.py --full --all-posts
 ```
 
@@ -98,15 +98,15 @@ python run.py --full --all-posts --years 2023
 ### Python 코드에서 사용
 
 ```python
-from crawling.core import SeokangCrawler
+from crawling.core import DaedeokCrawler
 
 # 크롤러 생성 (연도 필터 포함)
-crawler = SeokangCrawler(
+crawler = DaedeokCrawler(
     use_ocr=True,
     page_start=1,
-    page_end=17,
+    page_end=10,  # 대덕교회 페이지 수에 맞게 조정
     posts_per_page=None,  # 모든 게시글
-    year_filter=[2025, 2026]  # 2025-2026년만 수집
+    year_filter=[2024]  # 2024년만 수집
 )
 
 # 크롤링 실행
@@ -128,13 +128,13 @@ crawler.close()
   "title": "설교 제목",
   "content": "설교 전체 내용",
   "summary": "• 핵심 포인트 1\n• 핵심 포인트 2\n• 핵심 포인트 3",
-  "date": "2026-01-10",
-  "scripture": "창세기 1:1-5",
+  "date": "2026-01-11",
+  "scripture": "마태복음 25:1-13",
   "discussion_questions": ["질문 1", "질문 2"],
-  "church_name": "서강감리교회",
+  "church_name": "대덕교회",
   "ocr_used": true,
   "image_urls": ["이미지1.jpg", "이미지2.jpg"],
-  "link": "http://..."
+  "link": "https://ddpc.or.kr/..."
 }
 ```
 
@@ -144,10 +144,14 @@ crawler.close()
 
 ```python
 class CrawlerConfig:
+    # 대덕교회 설정
+    BASE_URL = "https://ddpc.or.kr/260"
+    CHURCH_NAME = "대덕교회"
+    
     PAGE_START = 1               # 시작 페이지
-    PAGE_END = 17                # 종료 페이지
+    PAGE_END = 10                # 종료 페이지 (사이트에 맞게 조정)
     POSTS_PER_PAGE = None        # 페이지당 게시글 수 (None = 전체)
-    YEAR_FILTER = [2025, 2026]   # 수집할 연도 (None = 전체)
+    YEAR_FILTER = [2024]         # 수집할 연도 (None = 전체)
 
     DELAY_BETWEEN_POSTS = 3      # 게시글 간 대기 시간 (초)
     DELAY_BETWEEN_PAGES = 5      # 페이지 간 대기 시간 (초)
@@ -183,15 +187,19 @@ YEAR_FILTER = None          # 모든 연도
 - 기존 데이터 자동 백업
 - 타임스탬프 포함
 
+### 6. 연도별 필터링
+- 2024년부터 크롤링하여 API 할당량 절약
+- 중복 방지 및 효율적 데이터 수집
+
 ## 🛠️ 개발
 
 ### 새 기능 추가
 
 ```python
 # 1. 새 크롤러 서브클래스 생성
-from crawling.core import SeokangCrawler
+from crawling.core import DaedeokCrawler
 
-class CustomCrawler(SeokangCrawler):
+class CustomCrawler(DaedeokCrawler):
     def _extract_content(self, soup):
         # 커스텀 로직
         pass
@@ -229,6 +237,7 @@ WARNING: GEMINI_API_KEY not found!
 ⏳ Rate limit hit. Waiting 15.0s...
 ```
 → 정상 동작입니다. 자동으로 재시도됩니다.
+→ 2024년부터 크롤링을 시작하여 할당량을 절약하세요.
 
 ### OCR 실패
 ```
@@ -237,6 +246,12 @@ WARNING: GEMINI_API_KEY not found!
 → 이미지 품질이 낮거나 텍스트가 부족할 수 있습니다. HTML 파싱으로 fallback됩니다.
 
 ## 📝 변경 이력
+
+### v2.2.0 (2026-01-26)
+- 🏛️ **대덕교회 사이트로 변경**
+- 🔗 새 URL: https://ddpc.or.kr/260
+- 📋 "주일오전 설교요약" 게시판 크롤링
+- 💰 API 할당량 관리: 2024년부터 크롤링 권장
 
 ### v2.1.0 (2026-01-12)
 - 🎯 **연도별 필터링 기능 추가**
