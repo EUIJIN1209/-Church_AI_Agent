@@ -7,13 +7,14 @@
 - **설교 아카이브 검색**: 과거 설교를 의미 기반으로 검색 (벡터 검색)
 - **멀티 프로필 모드**: 연구용 / 상담용 / 교육용 답변 스타일
 - **자동 출처 인용**: "YYYY년 MM월 DD일 '설교제목' 설교에서는..." 형식
+- **대화형 인터페이스**: 실시간 질문 및 모드 전환
 
 ## 기술 스택
 
 | 분류 | 기술 |
 |------|------|
 | **LLM** | OpenAI GPT-4o-mini |
-| **임베딩** | dragonkue/bge-m3-ko (1024차원) |
+| **임베딩** | dragonkue/bge-m3-ko (1024차원, 로컬) |
 | **벡터DB** | PostgreSQL + pgvector |
 | **백엔드** | FastAPI, LangGraph |
 | **프론트엔드** | Next.js, React, Tailwind CSS |
@@ -25,26 +26,39 @@
 Church/
 ├── backend/
 │   ├── agents/
-│   │   └── new_pipeline.py       # 메인 파이프라인 (진입점)
+│   │   └── new_pipeline.py       # 메인 파이프라인 (대화형 인터페이스)
 │   ├── sermon_agent/             # LangGraph 노드 모듈
 │   │   ├── nodes/
-│   │   │   ├── query_router.py       # 질문 분류 및 RAG 결정
-│   │   │   ├── sermon_retriever.py   # 벡터 검색
-│   │   │   └── answer_creator.py     # 답변 생성
+│   │   │   ├── query_router.py       # 질문 분류 (OpenAI)
+│   │   │   ├── sermon_retriever.py   # 벡터 검색 (로컬 임베딩)
+│   │   │   └── answer_creator.py     # 답변 생성 (OpenAI)
 │   │   ├── state/
-│   │   │   └── sermon_state.py       # State 스키마
-│   │   └── graph.py                  # 워크플로우 정의
-│   ├── crawling/                 # 대덕교회 크롤러
-│   ├── database/                 # DB 스크립트
-│   ├── embedding/                # 임베딩 생성
+│   │   │   └── sermon_state.py
+│   │   ├── utils/
+│   │   │   └── scripture_parser.py
+│   │   ├── config.py
+│   │   └── graph.py
+│   ├── crawling/                 # 대덕교회 크롤러 (모듈화)
+│   │   ├── core/
+│   │   │   ├── config.py             # 설정
+│   │   │   ├── driver.py             # Selenium WebDriver
+│   │   │   ├── parser.py             # 텍스트 파싱
+│   │   │   ├── extractor.py          # 페이지 추출
+│   │   │   └── storage.py            # JSON 저장
+│   │   ├── crawler.py                # 메인 크롤러 클래스
+│   │   ├── run.py                    # CLI 실행
+│   │   └── output/
+│   ├── database/
+│   ├── embedding/
 │   ├── main.py                   # FastAPI 서버
-│   └── test_vector_only.py       # 벡터 검색 테스트
-├── frontend/                     # Next.js 프론트엔드
+│   └── test_vector_only.py       # 벡터 검색 테스트 (API 비용 없음)
+├── frontend/
 │   └── src/
-│       ├── app/page.tsx          # 메인 페이지
-│       └── lib/api.ts            # API 클라이언트
+│       ├── app/page.tsx
+│       └── lib/api.ts
 ├── .env                          # 환경 변수
-├── requirements.txt              # Python 의존성
+├── requirements.txt
+├── README.md                     # 이 파일
 └── CLAUDE.md                     # 상세 프로젝트 문서
 ```
 
@@ -52,10 +66,17 @@ Church/
 
 ### 1. 환경 변수 설정
 
+`.env` 파일 생성:
+```env
+# OpenAI (필수)
+OPENAI_API_KEY=sk-...
 
+# 데이터베이스 (필수)
+DATABASE_URL=postgresql://user:pass@host:5432/church_db
 
-
-
+# 선택사항
+LANGSMITH_API_KEY=...
+LANGSMITH_TRACING=true
 ```
 
 ### 2. 백엔드 실행
@@ -81,15 +102,45 @@ npm install
 npm run dev
 ```
 
-### 4. 파이프라인 테스트
+### 4. 파이프라인 실행
 
 ```bash
-# 전체 파이프라인 테스트
-python backend/agents/new_pipeline.py
+# 대화형 모드 실행
+python -B backend/agents/new_pipeline.py
 
 # 벡터 검색만 테스트 (API 비용 없음)
-python backend/test_vector_only.py
+python -B backend/test_vector_only.py
 ```
+
+> `-B` 플래그: Python 캐시 파일(__pycache__) 생성 방지
+
+## 대화형 인터페이스
+
+```
+============================================================
+대덕교회 설교 AI 에이전트
+============================================================
+
+[사용법]
+  - 질문을 입력하세요
+  - 모드 변경: /mode research|counseling|education
+  - 종료: /quit 또는 /exit
+============================================================
+
+현재 모드: research
+
+[질문] 하나님의 사랑에 대한 설교가 있나요?
+```
+
+### 명령어
+
+| 명령어 | 설명 |
+|--------|------|
+| `/mode research` | 연구 모드 (신학적 분석) |
+| `/mode counseling` | 상담 모드 (위로, 격려) |
+| `/mode education` | 교육 모드 (쉬운 설명) |
+| `/help` | 도움말 |
+| `/quit` | 종료 |
 
 ## 워크플로우
 
@@ -98,14 +149,14 @@ python backend/test_vector_only.py
     │
     ▼
 ┌─────────────────┐
-│  query_router   │ ← 질문 분류, RAG 사용 여부 결정
+│  query_router   │ ← 질문 분류, RAG 사용 여부 결정 (GPT-4o-mini)
 └────────┬────────┘
          │
     use_rag?
     ├─ Yes ─┐
     │       ▼
     │  ┌─────────────────┐
-    │  │ sermon_retriever│ ← 벡터 검색 (pgvector)
+    │  │ sermon_retriever│ ← 벡터 검색 (bge-m3-ko, pgvector)
     │  └────────┬────────┘
     │           │
     └─── No ────┼───┐
@@ -118,14 +169,6 @@ python backend/test_vector_only.py
                   ▼
               최종 답변
 ```
-
-## 프로필 모드
-
-| 모드 | 설명 |
-|------|------|
-| `research` | 신학적 분석, 본문 해석, 설교 구조 |
-| `counseling` | 실생활 적용, 공감적 톤, 위로와 격려 |
-| `education` | 쉬운 설명, 비유 사용, 나눔 질문 |
 
 ## API 엔드포인트
 
@@ -149,19 +192,25 @@ curl -X POST http://localhost:8000/chat/sermon \
 
 ## 크롤러 사용법
 
-대덕교회 설교 데이터 수집:
-
 ```bash
 cd backend/crawling
 
-# 테스트 실행 (2페이지만)
+# 테스트 실행 (2페이지, 페이지당 3개)
 python run.py
 
 # 전체 크롤링
 python run.py --full --all-posts
 
-# 연도별 크롤링 (API 제한 대응)
-python run.py --full --all-posts --years 2024
+# 연도별 크롤링
+python run.py --full --all-posts --years 2024 2025
+
+# Python 코드에서 사용
+from crawling import DaedeokCrawler, CrawlerConfig
+
+config = CrawlerConfig(year_filter=[2024])
+crawler = DaedeokCrawler(config)
+sermons = crawler.crawl()
+crawler.save()
 ```
 
 ## 데이터 현황

@@ -234,7 +234,7 @@ def query_router_node(state: State) -> Dict[str, Any]:
     action = (state.get("user_action") or "chat").strip()
     profile_mode = state.get("profile_mode", "research")
 
-    print(f"[router] action='{action}', input='{text[:50] if text else '(empty)'}...'", flush=True)
+    # print(f"[router] action='{action}', input='{text[:50] if text else '(empty)'}...'", flush=True)
 
     # ── 특수 액션 처리 ──────────────────────────────────
 

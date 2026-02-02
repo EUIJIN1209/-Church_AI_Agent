@@ -216,40 +216,117 @@ def run_pipeline(
 
 
 # ─────────────────────────────────────────────────────────
+# 에이전트 역할 정의
+# ─────────────────────────────────────────────────────────
+
+AGENT_ROLE = """
+대덕교회 설교 AI 사역 비서
+
+당신은 대덕교회의 설교 아카이브를 기반으로 목회자와 성도를 돕는 AI 비서입니다.
+
+[주요 역할]
+1. 과거 설교 검색 및 요약
+2. 설교 준비 지원 (본문 해석, 적용점 제안)
+3. 성도 상담 지원 (위로, 격려의 말씀 제공)
+4. 교육 자료 작성 지원 (쉬운 설명, 나눔 질문)
+
+[프로필 모드]
+- research (연구): 신학적 분석, 깊이 있는 본문 해석
+- counseling (상담): 따뜻한 톤, 실생활 적용, 위로와 격려
+- education (교육): 쉬운 설명, 비유 사용, 소그룹 질문
+
+[데이터 출처]
+- 대덕교회 주일 설교 아카이브 (2023-2026년, 160개)
+- 답변 시 반드시 설교 날짜와 제목을 인용합니다.
+"""
+
+
+# ─────────────────────────────────────────────────────────
+# 대화형 인터페이스
+# ─────────────────────────────────────────────────────────
+
+def interactive_mode():
+    """대화형 모드로 에이전트 실행."""
+    print("=" * 60)
+    print("대덕교회 설교 AI 에이전트")
+    print("=" * 60)
+    print(AGENT_ROLE)
+    print("=" * 60)
+    print("\n[사용법]")
+    print("  - 질문을 입력하세요")
+    print("  - 모드 변경: /mode research|counseling|education")
+    print("  - 종료: /quit 또는 /exit")
+    print("=" * 60)
+
+    current_mode = "research"
+    print(f"\n현재 모드: {current_mode}")
+
+    while True:
+        try:
+            user_input = input("\n[질문] ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n\n종료합니다.")
+            break
+
+        if not user_input:
+            continue
+
+        # 명령어 처리
+        if user_input.startswith("/"):
+            cmd = user_input.lower()
+
+            if cmd in ("/quit", "/exit", "/q"):
+                print("종료합니다.")
+                break
+
+            elif cmd.startswith("/mode"):
+                parts = cmd.split()
+                if len(parts) == 2 and parts[1] in ("research", "counseling", "education"):
+                    current_mode = parts[1]
+                    print(f"모드 변경: {current_mode}")
+                else:
+                    print("사용법: /mode research|counseling|education")
+                continue
+
+            elif cmd == "/help":
+                print("\n[명령어]")
+                print("  /mode <모드>  - 모드 변경 (research, counseling, education)")
+                print("  /quit         - 종료")
+                print("  /help         - 도움말")
+                continue
+
+            else:
+                print(f"알 수 없는 명령어: {user_input}")
+                continue
+
+        # 질문 처리
+        print(f"[모드] {current_mode}")
+        print("-" * 60)
+        print("처리 중...")
+
+        try:
+            result = run_pipeline(user_input, profile_mode=current_mode)
+
+            print(f"\n[카테고리] {result['category']}")
+            print(f"[RAG 사용] {result['used_rag']}")
+
+            if result['citations']:
+                print(f"\n[참고 설교]")
+                for i, ref in enumerate(result['citations'], 1):
+                    print(f"  {i}. [{ref.get('date')}] {ref.get('title')}")
+
+            print(f"\n[답변]")
+            print("-" * 60)
+            print(result['answer'])
+            print("-" * 60)
+
+        except Exception as e:
+            print(f"\n[오류] {e}")
+
+
+# ─────────────────────────────────────────────────────────
 # 메인 실행
 # ─────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("대덕교회 설교 AI 에이전트")
-    print("=" * 60)
-    print(f"LLM: OpenAI GPT-4o-mini")
-    print(f"임베딩: dragonkue/bge-m3-ko (1024차원)")
-    print("=" * 60)
-
-    # 테스트 질문
-    test_questions = [
-        ("하나님의 사랑에 대해 설교에서 어떻게 말씀하셨나요?", "research"),
-        # ("힘든 시간을 보내고 있어요. 위로가 되는 말씀 있을까요?", "counseling"),
-    ]
-
-    for question, mode in test_questions:
-        print(f"\n[질문] {question}")
-        print(f"[모드] {mode}")
-        print("-" * 60)
-
-        result = run_pipeline(question, profile_mode=mode)
-
-        print(f"\n[카테고리] {result['category']}")
-        print(f"[RAG 사용] {result['used_rag']}")
-
-        if result['citations']:
-            print(f"\n[참고 설교]")
-            for i, ref in enumerate(result['citations'], 1):
-                print(f"  {i}. [{ref.get('date')}] {ref.get('title')}")
-
-        print(f"\n[답변]")
-        print(result['answer'])
-        print("-" * 60)
-
-    print("\n[완료]")
+    interactive_mode()

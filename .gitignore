@@ -45,9 +45,11 @@ next-env.d.ts
 # json files
 *.jsonc
 
-core/_pychache_/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
 CLAUDE.md
 .claude/
--cwd/
-._pychache_

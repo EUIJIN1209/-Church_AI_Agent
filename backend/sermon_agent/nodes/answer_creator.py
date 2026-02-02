@@ -361,7 +361,7 @@ def answer_creator_node(state: State) -> Dict[str, Any]:
     category = router.get("category", "OTHER")
     streaming_mode = state.get("streaming_mode", False)
 
-    print(f"[answer] mode={profile_mode}, snippets={len(rag_snippets)}, streaming={streaming_mode}", flush=True)
+    # print(f"[answer] mode={profile_mode}, snippets={len(rag_snippets)}, streaming={streaming_mode}", flush=True)
 
     # 빈 입력
     if not user_input.strip():
