@@ -12,6 +12,7 @@ sermon_state.py
 - 특징:
   * messages는 Annotated[..., operator.add]로 append-only reducer 설정
   * 멀티 프로필 모드 지원 (연구용/상담용/교육용)
+  * 스트리밍 모드 지원
 """
 
 from __future__ import annotations
@@ -48,24 +49,44 @@ class Message(TypedDict, total=False):
 class SermonSnippet(TypedDict, total=False):
     """
     RAG로 가져온 설교 스니펫 단위.
-    - sermon_id: 설교 ID
-    - source: "sermon_archive" 등 출처
-    - title: 설교 제목
-    - date: 설교 날짜
-    - scripture: 성경 구절
-    - summary: 요약 또는 발췌
-    - score: 유사도/랭킹 점수
-    - thumbnail_url: 주보 이미지 썸네일 URL (있는 경우)
     """
     sermon_id: str
-    source: str
+    source: str  # "sermon_archive"
     title: Optional[str]
-    date: Optional[str]
-    scripture: Optional[str]
-    summary: str
-    score: Optional[float]
+    date: Optional[str]  # "YYYY년 MM월 DD일" 형식
+    scripture: Optional[str]  # 성경 구절
+    summary: str  # 설교 요약/내용
+    score: Optional[float]  # Cosine Similarity
+    church_name: Optional[str]
+    preacher: Optional[str]
+    video_url: Optional[str]
     thumbnail_url: Optional[str]
-    full_text: Optional[str]  # 전체 설교 텍스트 (필요시)
+    full_text: Optional[str]
+
+
+class Citation(TypedDict, total=False):
+    """
+    답변에 사용된 출처 정보.
+    """
+    sermon_id: str
+    title: str
+    date: str
+    scripture: Optional[str]
+    score: Optional[float]
+
+
+class AnswerResult(TypedDict, total=False):
+    """
+    LLM 답변 결과.
+    """
+    text: str
+    citations: List[Citation]
+    scripture_refs: List[str]  # 답변에서 추출된 성경 구절
+    category: Optional[str]
+    profile_mode: str
+    model: str
+    used_rag: bool
+    error: Optional[str]
 
 
 # ─────────────────────────────────────────────────────────
@@ -76,49 +97,75 @@ ProfileMode = Literal["research", "counseling", "education"]
 
 
 # ─────────────────────────────────────────────────────────
+# Router 결정 타입
+# ─────────────────────────────────────────────────────────
+
+QuestionCategory = Literal[
+    "SERMON_PREP",      # 설교 준비 관련
+    "COUNSELING",       # 성도 상담 관련
+    "SCRIPTURE_QA",     # 성경 구절/해석 관련
+    "SERMON_SEARCH",    # 과거 설교 검색
+    "SMALL_TALK",       # 인사/잡담
+    "OTHER"             # 기타
+]
+
+
+class RouterDecision(TypedDict, total=False):
+    """
+    Router 노드의 결정 결과.
+    """
+    category: QuestionCategory
+    use_rag: bool
+    reason: str
+
+
+# ─────────────────────────────────────────────────────────
 # State (그래프 전체에서 공유하는 컨텍스트)
 # ─────────────────────────────────────────────────────────
 
 class SermonState(TypedDict, total=False):
     # ── 세션/제어 ───────────────────────────────────────
     session_id: str
-    user_id: Optional[int]  # 목사님 사용자 ID
+    user_id: Optional[int]
     end_session: bool
     started_at: str
     last_activity_at: str
     turn_count: int
 
-    # ── 대화 컨텍스트 ───────────────────────────────────
+    # ── 대화 컨텍스트 (append-only) ─────────────────────
     messages: Annotated[List[Message], operator.add]
     rolling_summary: Optional[str]
 
     # ── 프로필 모드 ─────────────────────────────────────
     profile_mode: ProfileMode  # "research" | "counseling" | "education"
-    profile_mode_prompt: Optional[str]  # 현재 모드에 맞는 프롬프트
+    profile_mode_prompt: Optional[str]
 
     # ── 사용자 컨텍스트 ─────────────────────────────────
-    user_context: Dict[str, Any]  # 목사님의 선호도, 교회 정보 등
+    user_context: Dict[str, Any]
 
     # ── RAG 관련 ────────────────────────────────────────
-    retrieval: Dict[str, Any]  # used_rag / rag_snippets / search_query ...
-    rag_snippets: List[SermonSnippet]  # 검색된 설교 스니펫들
+    retrieval: Dict[str, Any]  # used_rag, search_query, count, error 등
+    rag_snippets: List[SermonSnippet]
 
     # ── 입출력 ─────────────────────────────────────────
     user_input: Optional[str]
-    answer: Dict[str, Any]  # 최종 답변 (텍스트, 참고 설교 목록 등)
-    user_action: Optional[str]  # 사용자 액션 (업로드, 검색 등)
+    user_action: Optional[str]  # "chat" | "save" | "reset" 등
+    answer: AnswerResult
 
     # ── Router 결정 값 ──────────────────────────────────
-    router: Dict[str, Any]  # 질문 타입, RAG 사용 여부 등
-    next: Optional[str]  # 다음 노드
+    router: RouterDecision
+    next: Optional[str]
 
     # ── OCR/이미지 처리 관련 ────────────────────────────
-    uploaded_images: List[Dict[str, Any]]  # 업로드된 주보 이미지 정보
-    ocr_results: List[Dict[str, Any]]  # OCR 처리 결과
+    uploaded_images: List[Dict[str, Any]]
+    ocr_results: List[Dict[str, Any]]
 
     # ── 스트리밍 관련 ───────────────────────────────────
-    streaming_mode: bool  # 스트리밍 모드 활성화 여부
-    streaming_context: Dict[str, Any]  # 스트리밍용 컨텍스트
+    streaming_mode: bool
+    streaming_context: Dict[str, Any]  # 스트리밍 재생성용 컨텍스트
+
+    # ── 타이밍/디버그 ───────────────────────────────────
+    timing: Dict[str, float]  # 각 노드별 소요 시간
 
 
 # alias 편의를 위해 짧은 이름도 제공
@@ -127,8 +174,11 @@ State = SermonState
 __all__ = [
     "Message",
     "SermonSnippet",
+    "Citation",
+    "AnswerResult",
     "ProfileMode",
+    "QuestionCategory",
+    "RouterDecision",
     "SermonState",
     "State",
 ]
-
