@@ -66,19 +66,6 @@ Church/
 
 ### 1. 환경 변수 설정
 
-`.env` 파일 생성:
-```env
-# OpenAI (필수)
-OPENAI_API_KEY=sk-...
-
-# 데이터베이스 (필수)
-DATABASE_URL=postgresql://user:pass@host:5432/church_db
-
-# 선택사항
-LANGSMITH_API_KEY=...
-LANGSMITH_TRACING=true
-```
-
 ### 2. 백엔드 실행
 
 ```bash
