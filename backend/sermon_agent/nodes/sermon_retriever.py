@@ -28,12 +28,12 @@ from langchain_huggingface import HuggingFaceEmbeddings
 try:
     from langsmith import traceable
 except Exception:
+
     def traceable(func):
         return func
 
-from backend.sermon_agent.state.sermon_state import (
-    State, Message, SermonSnippet
-)
+
+from backend.sermon_agent.state.sermon_state import State, Message, SermonSnippet
 
 load_dotenv()
 
@@ -68,6 +68,7 @@ _cache_order: List[str] = []
 # 유틸리티 함수
 # ─────────────────────────────────────────────────────────
 
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -79,8 +80,8 @@ def _get_embeddings_model() -> HuggingFaceEmbeddings:
         print(f"  [Embedding] {EMBEDDING_MODEL_NAME} 모델 로딩 중...", flush=True)
         _embeddings_model = HuggingFaceEmbeddings(
             model_name=EMBEDDING_MODEL_NAME,
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True},
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
         )
         print(f"  [Embedding] 모델 로딩 완료 ({EMBEDDING_DIMENSION}차원)", flush=True)
     return _embeddings_model
@@ -157,6 +158,7 @@ def _build_search_query(
 # 벡터 검색
 # ─────────────────────────────────────────────────────────
 
+
 def _search_sermons(query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """
     PGVector 기반 설교 검색 (Cosine Similarity).
@@ -214,27 +216,29 @@ def _search_sermons(query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
         # 날짜 포맷팅
         date_str = None
         if r[2]:
-            if hasattr(r[2], 'strftime'):
+            if hasattr(r[2], "strftime"):
                 date_str = r[2].strftime("%Y년 %m월 %d일")
             else:
                 date_str = str(r[2])
 
-        results.append({
-            "sermon_id": str(r[0]),
-            "title": r[1] or "",
-            "date": date_str,
-            "bible_ref": r[3] or "",
-            "content_summary": r[4] or "",
-            "video_url": r[5] or None,
-            "church_name": r[6] or "대덕교회",
-            "preacher": r[7] or "",
-            "similarity": round(similarity, 4),
-        })
+        results.append(
+            {
+                "sermon_id": str(r[0]),
+                "title": r[1] or "",
+                "date": date_str,
+                "bible_ref": r[3] or "",
+                "content_summary": r[4] or "",
+                "video_url": r[5] or None,
+                "church_name": r[6] or "대덕교회",
+                "preacher": r[7] or "",
+                "similarity": round(similarity, 4),
+            }
+        )
 
     print(
         f"  [Search] '{query_text[:30]}...' -> {len(results)}개 "
         f"(embed: {embed_time:.2f}s, db: {db_time:.2f}s)",
-        flush=True
+        flush=True,
     )
 
     return results
@@ -243,6 +247,7 @@ def _search_sermons(query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
 # ─────────────────────────────────────────────────────────
 # 메인 노드 함수
 # ─────────────────────────────────────────────────────────
+
 
 @traceable
 def sermon_retriever_node(state: State) -> Dict[str, Any]:
@@ -329,6 +334,7 @@ def sermon_retriever_node(state: State) -> Dict[str, Any]:
     except Exception as e:
         print(f"[retriever] ERROR: {e}", flush=True)
         import traceback
+
         traceback.print_exc()
 
         snippets = []
@@ -358,6 +364,7 @@ def sermon_retriever_node(state: State) -> Dict[str, Any]:
 # ─────────────────────────────────────────────────────────
 # 독립 실행 함수
 # ─────────────────────────────────────────────────────────
+
 
 def search_sermons_standalone(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """독립 실행 가능한 설교 검색 함수."""

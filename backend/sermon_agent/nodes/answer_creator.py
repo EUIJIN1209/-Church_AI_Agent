@@ -30,11 +30,18 @@ from openai import OpenAI
 try:
     from langsmith import traceable
 except Exception:
+
     def traceable(func):
         return func
 
+
 from backend.sermon_agent.state.sermon_state import (
-    State, Message, SermonSnippet, Citation, AnswerResult, ProfileMode
+    State,
+    Message,
+    SermonSnippet,
+    Citation,
+    AnswerResult,
+    ProfileMode,
 )
 
 load_dotenv()
@@ -48,6 +55,7 @@ ANSWER_MODEL = os.getenv("ANSWER_MODEL", "gpt-4o-mini")
 
 _client: Optional[OpenAI] = None
 
+
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
@@ -59,6 +67,7 @@ def _get_client() -> OpenAI:
 # 유틸리티 함수
 # ─────────────────────────────────────────────────────────
 
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -66,12 +75,12 @@ def _now_iso() -> str:
 def _extract_scripture_references(text: str) -> List[str]:
     """텍스트에서 성경 구절 참조 추출."""
     patterns = [
-        r'[가-힣]+복음?\s*\d+장\s*\d+절?(?:\s*[-~]\s*\d+절?)?',
-        r'[가-힣]+복음?\s*\d+:\d+(?:\s*[-~]\s*\d+)?',
-        r'[가-힣]+서?\s*\d+장\s*\d+절?(?:\s*[-~]\s*\d+절?)?',
-        r'[가-힣]+서?\s*\d+:\d+(?:\s*[-~]\s*\d+)?',
-        r'시편\s*\d+편(?:\s*\d+절?)?',
-        r'잠언\s*\d+장\s*\d+절?',
+        r"[가-힣]+복음?\s*\d+장\s*\d+절?(?:\s*[-~]\s*\d+절?)?",
+        r"[가-힣]+복음?\s*\d+:\d+(?:\s*[-~]\s*\d+)?",
+        r"[가-힣]+서?\s*\d+장\s*\d+절?(?:\s*[-~]\s*\d+절?)?",
+        r"[가-힣]+서?\s*\d+:\d+(?:\s*[-~]\s*\d+)?",
+        r"시편\s*\d+편(?:\s*\d+절?)?",
+        r"잠언\s*\d+장\s*\d+절?",
     ]
 
     references = []
@@ -152,6 +161,7 @@ def _get_system_prompt(mode: ProfileMode) -> str:
 # 컨텍스트 포맷팅
 # ─────────────────────────────────────────────────────────
 
+
 def _format_sermon_context(snippets: List[SermonSnippet]) -> str:
     """검색된 설교를 LLM 컨텍스트로 포맷팅."""
     if not snippets:
@@ -161,7 +171,7 @@ def _format_sermon_context(snippets: List[SermonSnippet]) -> str:
         "=" * 50,
         "[참고 설교 아카이브] 아래 내용만을 바탕으로 답변하세요",
         "=" * 50,
-        ""
+        "",
     ]
 
     for i, s in enumerate(snippets, 1):
@@ -185,7 +195,9 @@ def _format_sermon_context(snippets: List[SermonSnippet]) -> str:
         lines.append("-" * 50)
 
     lines.append("")
-    lines.append("위 설교 내용을 바탕으로 질문에 답변하세요. 반드시 날짜와 제목을 인용하세요.")
+    lines.append(
+        "위 설교 내용을 바탕으로 질문에 답변하세요. 반드시 날짜와 제목을 인용하세요."
+    )
     lines.append("=" * 50)
 
     return "\n".join(lines)
@@ -195,9 +207,17 @@ def _build_user_prompt(
     user_input: str,
     sermon_context: str,
     category: str,
+    conversation_context: str = "",
 ) -> str:
     """사용자 프롬프트 구성."""
-    parts = [f"## 질문\n{user_input}"]
+    parts = []
+
+    # 대화 컨텍스트가 있으면 추가 (멀티턴 대화 지원)
+    if conversation_context:
+        parts.append(conversation_context)
+        parts.append("\n위 대화를 참고하여 후속 질문에 답변해주세요.\n")
+
+    parts.append(f"## 질문\n{user_input}")
 
     if sermon_context:
         parts.append(f"\n{sermon_context}")
@@ -218,6 +238,7 @@ def _build_user_prompt(
 # ─────────────────────────────────────────────────────────
 # Fallback 메시지
 # ─────────────────────────────────────────────────────────
+
 
 def _build_fallback_text(
     user_input: str,
@@ -248,17 +269,21 @@ def _build_fallback_text(
 # LLM 호출 (일반)
 # ─────────────────────────────────────────────────────────
 
+
 def _run_answer_llm(
     user_input: str,
     profile_mode: ProfileMode,
     sermon_context: str,
     category: str,
+    conversation_context: str = "",
 ) -> str:
     """OpenAI API를 사용한 답변 생성."""
     client = _get_client()
 
     system_prompt = _get_system_prompt(profile_mode)
-    user_prompt = _build_user_prompt(user_input, sermon_context, category)
+    user_prompt = _build_user_prompt(
+        user_input, sermon_context, category, conversation_context
+    )
 
     response = client.chat.completions.create(
         model=ANSWER_MODEL,
@@ -277,17 +302,21 @@ def _run_answer_llm(
 # LLM 호출 (스트리밍)
 # ─────────────────────────────────────────────────────────
 
+
 def _run_answer_llm_stream(
     user_input: str,
     profile_mode: ProfileMode,
     sermon_context: str,
     category: str,
+    conversation_context: str = "",
 ) -> Generator[str, None, None]:
     """OpenAI API 스트리밍 답변 생성."""
     client = _get_client()
 
     system_prompt = _get_system_prompt(profile_mode)
-    user_prompt = _build_user_prompt(user_input, sermon_context, category)
+    user_prompt = _build_user_prompt(
+        user_input, sermon_context, category, conversation_context
+    )
 
     try:
         response = client.chat.completions.create(
@@ -313,6 +342,7 @@ def _run_answer_llm_stream(
 # Citations 구성
 # ─────────────────────────────────────────────────────────
 
+
 def _build_citations(snippets: List[SermonSnippet]) -> List[Citation]:
     """SermonSnippet에서 Citation 목록 생성."""
     citations: List[Citation] = []
@@ -333,6 +363,7 @@ def _build_citations(snippets: List[SermonSnippet]) -> List[Citation]:
 # ─────────────────────────────────────────────────────────
 # 메인 노드 함수
 # ─────────────────────────────────────────────────────────
+
 
 @traceable
 def answer_creator_node(state: State) -> Dict[str, Any]:
@@ -360,6 +391,12 @@ def answer_creator_node(state: State) -> Dict[str, Any]:
     router = state.get("router") or {}
     category = router.get("category", "OTHER")
     streaming_mode = state.get("streaming_mode", False)
+
+    # 대화 컨텍스트 (멀티턴 대화 지원)
+    user_context = state.get("user_context") or {}
+    conversation_context = user_context.get("conversation_history", "") or state.get(
+        "rolling_summary", ""
+    )
 
     # print(f"[answer] mode={profile_mode}, snippets={len(rag_snippets)}, streaming={streaming_mode}", flush=True)
 
@@ -415,6 +452,7 @@ def answer_creator_node(state: State) -> Dict[str, Any]:
             "profile_mode": profile_mode,
             "sermon_context": sermon_context,
             "category": category,
+            "conversation_context": conversation_context,
         }
 
         tool_msg: Message = {
@@ -440,6 +478,7 @@ def answer_creator_node(state: State) -> Dict[str, Any]:
             profile_mode,
             sermon_context,
             category,
+            conversation_context,
         )
         llm_time = time.time() - llm_start
 
@@ -456,9 +495,7 @@ def answer_creator_node(state: State) -> Dict[str, Any]:
             "used_rag": bool(rag_snippets),
         }
 
-        log_content = (
-            f"[answer] generated ({len(answer_text)} chars, {llm_time:.2f}s)"
-        )
+        log_content = f"[answer] generated ({len(answer_text)} chars, {llm_time:.2f}s)"
         tool_msg: Message = {
             "role": "tool",
             "content": log_content,
@@ -481,11 +518,15 @@ def answer_creator_node(state: State) -> Dict[str, Any]:
             },
         }
 
-        print(f"[answer] generated {len(answer_text)} chars in {llm_time:.2f}s", flush=True)
+        print(
+            f"[answer] generated {len(answer_text)} chars in {llm_time:.2f}s",
+            flush=True,
+        )
 
     except Exception as e:
         print(f"[answer] ERROR: {e}", flush=True)
         import traceback
+
         traceback.print_exc()
 
         # Fallback
@@ -530,6 +571,7 @@ def answer_creator_node(state: State) -> Dict[str, Any]:
 # 스트리밍 함수 (외부 호출용)
 # ─────────────────────────────────────────────────────────
 
+
 def stream_answer(streaming_context: Dict[str, Any]) -> Generator[str, None, None]:
     """
     스트리밍 컨텍스트를 사용해 답변 스트리밍.
@@ -544,10 +586,12 @@ def stream_answer(streaming_context: Dict[str, Any]) -> Generator[str, None, Non
     profile_mode = streaming_context.get("profile_mode", "research")
     sermon_context = streaming_context.get("sermon_context", "")
     category = streaming_context.get("category", "OTHER")
+    conversation_context = streaming_context.get("conversation_context", "")
 
     yield from _run_answer_llm_stream(
         user_input,
         profile_mode,
         sermon_context,
         category,
+        conversation_context,
     )

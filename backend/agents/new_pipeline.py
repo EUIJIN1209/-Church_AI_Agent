@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 # 프로젝트 루트 경로 설정
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -143,6 +143,75 @@ def get_graph():
 
 
 # ─────────────────────────────────────────────────────────
+# 대화 세션 관리
+# ─────────────────────────────────────────────────────────
+
+class ConversationSession:
+    """멀티턴 대화 세션 관리."""
+
+    def __init__(self, session_id: str = "default", max_history: int = 10):
+        self.session_id = session_id
+        self.max_history = max_history
+        self.history: List[Dict[str, str]] = []  # [{"role": "user/assistant", "content": "..."}]
+        self.turn_count = 0
+        self.created_at = _now_iso()
+        self.last_rag_snippets: List[Dict] = []  # 최근 검색 결과 저장
+
+    def add_user_message(self, content: str):
+        """사용자 메시지 추가."""
+        self.history.append({"role": "user", "content": content})
+        self.turn_count += 1
+        self._trim_history()
+
+    def add_assistant_message(self, content: str):
+        """어시스턴트 응답 추가."""
+        self.history.append({"role": "assistant", "content": content})
+        self._trim_history()
+
+    def _trim_history(self):
+        """히스토리 크기 제한."""
+        if len(self.history) > self.max_history * 2:
+            self.history = self.history[-self.max_history * 2:]
+
+    def get_context_summary(self) -> str:
+        """대화 컨텍스트 요약 생성."""
+        if not self.history:
+            return ""
+
+        lines = ["[이전 대화 내용]"]
+        for msg in self.history[-6:]:  # 최근 3턴만
+            role = "사용자" if msg["role"] == "user" else "AI"
+            content = msg["content"][:200] + "..." if len(msg["content"]) > 200 else msg["content"]
+            lines.append(f"{role}: {content}")
+        lines.append("")
+
+        return "\n".join(lines)
+
+    def clear(self):
+        """대화 내역 초기화."""
+        self.history = []
+        self.turn_count = 0
+        self.last_rag_snippets = []
+
+
+# 전역 세션 저장소
+_sessions: Dict[str, ConversationSession] = {}
+
+
+def get_session(session_id: str = "default") -> ConversationSession:
+    """세션 가져오기 (없으면 생성)."""
+    if session_id not in _sessions:
+        _sessions[session_id] = ConversationSession(session_id)
+    return _sessions[session_id]
+
+
+def clear_session(session_id: str = "default"):
+    """세션 초기화."""
+    if session_id in _sessions:
+        _sessions[session_id].clear()
+
+
+# ─────────────────────────────────────────────────────────
 # 실행 함수
 # ─────────────────────────────────────────────────────────
 
@@ -151,6 +220,7 @@ def run_pipeline(
     profile_mode: str = "research",
     session_id: str = "default",
     user_id: Optional[int] = None,
+    use_history: bool = True,
 ) -> Dict[str, Any]:
     """
     설교 AI 에이전트 파이프라인 실행.
@@ -160,6 +230,7 @@ def run_pipeline(
         profile_mode: 프로필 모드 ("research", "counseling", "education")
         session_id: 세션 ID
         user_id: 사용자 ID (선택)
+        use_history: 대화 이력 사용 여부 (기본: True)
 
     Returns:
         Dict containing:
@@ -168,9 +239,21 @@ def run_pipeline(
             - scripture_refs: 성경 구절 참조
             - category: 질문 카테고리
             - used_rag: RAG 사용 여부
+            - turn_count: 현재 턴 수
     """
     graph = get_graph()
     now = _now_iso()
+
+    # 세션 관리
+    session = get_session(session_id)
+
+    # 대화 컨텍스트 구성
+    conversation_context = ""
+    if use_history and session.history:
+        conversation_context = session.get_context_summary()
+
+    # 사용자 메시지 기록
+    session.add_user_message(question)
 
     # 초기 상태 구성
     initial_state: State = {
@@ -179,12 +262,12 @@ def run_pipeline(
         "end_session": False,
         "started_at": now,
         "last_activity_at": now,
-        "turn_count": 1,
+        "turn_count": session.turn_count,
         "messages": [],
-        "rolling_summary": None,
+        "rolling_summary": conversation_context,  # 대화 컨텍스트 전달
         "profile_mode": profile_mode,
         "profile_mode_prompt": None,
-        "user_context": {},
+        "user_context": {"conversation_history": conversation_context},
         "retrieval": {},
         "rag_snippets": [],
         "user_input": question,
@@ -204,14 +287,24 @@ def run_pipeline(
     # 결과 추출
     answer_data = result.get("answer", {})
     router_data = result.get("router", {})
+    answer_text = answer_data.get("text", "")
+
+    # 어시스턴트 응답 기록
+    session.add_assistant_message(answer_text)
+
+    # RAG 스니펫 저장 (후속 질문 참조용)
+    rag_snippets = result.get("rag_snippets", [])
+    if rag_snippets:
+        session.last_rag_snippets = rag_snippets
 
     return {
-        "answer": answer_data.get("text", ""),
+        "answer": answer_text,
         "citations": answer_data.get("citations", []),
         "scripture_refs": answer_data.get("scripture_refs", []),
         "category": router_data.get("category", "OTHER"),
         "used_rag": answer_data.get("used_rag", False),
         "profile_mode": profile_mode,
+        "turn_count": session.turn_count,
     }
 
 
@@ -253,17 +346,22 @@ def interactive_mode():
     print(AGENT_ROLE)
     print("=" * 60)
     print("\n[사용법]")
-    print("  - 질문을 입력하세요")
+    print("  - 질문을 입력하세요 (후속 질문 가능)")
     print("  - 모드 변경: /mode research|counseling|education")
+    print("  - 대화 초기화: /clear")
     print("  - 종료: /quit 또는 /exit")
     print("=" * 60)
 
     current_mode = "research"
+    session_id = "interactive"
     print(f"\n현재 모드: {current_mode}")
 
     while True:
+        session = get_session(session_id)
+        turn_info = f" (턴 {session.turn_count + 1})" if session.turn_count > 0 else ""
+
         try:
-            user_input = input("\n[질문] ").strip()
+            user_input = input(f"\n[질문{turn_info}] ").strip()
         except (KeyboardInterrupt, EOFError):
             print("\n\n종료합니다.")
             break
@@ -288,11 +386,33 @@ def interactive_mode():
                     print("사용법: /mode research|counseling|education")
                 continue
 
+            elif cmd == "/clear":
+                clear_session(session_id)
+                print("대화 내역이 초기화되었습니다.")
+                continue
+
+            elif cmd == "/history":
+                session = get_session(session_id)
+                if session.history:
+                    print("\n[대화 내역]")
+                    for i, msg in enumerate(session.history):
+                        role = "사용자" if msg["role"] == "user" else "AI"
+                        content = msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
+                        print(f"  {i+1}. [{role}] {content}")
+                else:
+                    print("대화 내역이 없습니다.")
+                continue
+
             elif cmd == "/help":
                 print("\n[명령어]")
                 print("  /mode <모드>  - 모드 변경 (research, counseling, education)")
+                print("  /clear        - 대화 내역 초기화")
+                print("  /history      - 대화 내역 확인")
                 print("  /quit         - 종료")
                 print("  /help         - 도움말")
+                print("\n[멀티턴 대화 지원]")
+                print("  - 후속 질문이 가능합니다 (예: '그 설교에 대해 더 알려줘')")
+                print("  - /clear로 새로운 대화를 시작할 수 있습니다")
                 continue
 
             else:
@@ -300,14 +420,16 @@ def interactive_mode():
                 continue
 
         # 질문 처리
-        print(f"[모드] {current_mode}")
+        session = get_session(session_id)
+        context_hint = " (대화 컨텍스트 사용)" if session.turn_count > 0 else ""
+        print(f"[모드] {current_mode}{context_hint}")
         print("-" * 60)
         print("처리 중...")
 
         try:
-            result = run_pipeline(user_input, profile_mode=current_mode)
+            result = run_pipeline(user_input, profile_mode=current_mode, session_id=session_id)
 
-            print(f"\n[카테고리] {result['category']}")
+            print(f"\n[턴 {result['turn_count']}] [카테고리] {result['category']}")
             print(f"[RAG 사용] {result['used_rag']}")
 
             if result['citations']:

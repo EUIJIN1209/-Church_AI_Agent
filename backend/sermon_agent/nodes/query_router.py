@@ -30,11 +30,16 @@ from pydantic import BaseModel, Field
 try:
     from langsmith import traceable
 except Exception:
+
     def traceable(func):
         return func
 
+
 from backend.sermon_agent.state.sermon_state import (
-    State, Message, RouterDecision, QuestionCategory
+    State,
+    Message,
+    RouterDecision,
+    QuestionCategory,
 )
 
 load_dotenv()
@@ -48,6 +53,7 @@ ROUTER_MODEL = os.getenv("ROUTER_MODEL", "gpt-4o-mini")
 
 _client: Optional[OpenAI] = None
 
+
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
@@ -58,6 +64,7 @@ def _get_client() -> OpenAI:
 # ─────────────────────────────────────────────────────────
 # 유틸리티 함수
 # ─────────────────────────────────────────────────────────
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -94,7 +101,7 @@ def _extract_json(text: str) -> str:
         elif text[i] == "}":
             depth -= 1
             if depth == 0:
-                return text[start:i + 1]
+                return text[start : i + 1]
 
     raise ValueError(f"JSON 종료점 없음: {text[:100]}")
 
@@ -103,12 +110,17 @@ def _extract_json(text: str) -> str:
 # Pydantic 스키마
 # ─────────────────────────────────────────────────────────
 
+
 class RouterDecisionSchema(BaseModel):
     """LLM이 반환해야 하는 JSON 스키마."""
 
     category: Literal[
-        "SERMON_PREP", "COUNSELING", "SCRIPTURE_QA",
-        "SERMON_SEARCH", "SMALL_TALK", "OTHER"
+        "SERMON_PREP",
+        "COUNSELING",
+        "SCRIPTURE_QA",
+        "SERMON_SEARCH",
+        "SMALL_TALK",
+        "OTHER",
     ] = Field(
         description=(
             "발화 타입:\n"
@@ -126,9 +138,7 @@ class RouterDecisionSchema(BaseModel):
             "예: '설교를 찾아줘', '~에 대해 어떻게 말씀하셨나요?', '과거 설교 검색' 등"
         )
     )
-    reason: str = Field(
-        description="판단 이유 (한국어로 간단히)"
-    )
+    reason: str = Field(description="판단 이유 (한국어로 간단히)")
 
 
 # ─────────────────────────────────────────────────────────
@@ -174,6 +184,7 @@ SYSTEM_PROMPT = """
 # LLM 호출
 # ─────────────────────────────────────────────────────────
 
+
 def _call_router_llm(text: str, profile_mode: str) -> RouterDecisionSchema:
     """OpenAI API를 사용한 라우터 결정."""
     client = _get_client()
@@ -211,6 +222,7 @@ def _call_router_llm(text: str, profile_mode: str) -> RouterDecisionSchema:
 # ─────────────────────────────────────────────────────────
 # 메인 노드 함수
 # ─────────────────────────────────────────────────────────
+
 
 @traceable
 def query_router_node(state: State) -> Dict[str, Any]:
@@ -372,8 +384,10 @@ if __name__ == "__main__":
 
     for text in test_inputs:
         print(f"\n입력: {text}")
-        result = query_router_node({
-            "user_input": text,
-            "profile_mode": "research",
-        })
+        result = query_router_node(
+            {
+                "user_input": text,
+                "profile_mode": "research",
+            }
+        )
         print(f"결과: {result['router']}")
