@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from backend.sermon_agent.graph import get_sermon_agent_graph
 from backend.sermon_agent.state.sermon_state import State, ProfileMode
+from backend.auth.routes import router as auth_router
 
 
 app = FastAPI(title="Sermon AI Backend", version="0.1.0")
@@ -30,25 +31,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 인증 라우터 등록
+app.include_router(auth_router)
+
 
 # ─────────────────────────────────────────────────────────
 # Pydantic 모델
 # ─────────────────────────────────────────────────────────
-
-
-class SignupRequest(BaseModel):
-    username: str
-    password: str
-
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-class AuthResponse(BaseModel):
-    user_id: str
-    access_token: str
 
 
 class ChatRequest(BaseModel):
@@ -63,43 +52,6 @@ class ChatResponse(BaseModel):
     references: list
     scripture_refs: list
     category: Optional[str] = None
-
-
-# ─────────────────────────────────────────────────────────
-# 간단한 인증 API (틀만)
-# 실제 구현 시 JWT + users 테이블 연동 필요
-# ─────────────────────────────────────────────────────────
-
-
-@app.post("/auth/signup", response_model=AuthResponse)
-async def signup(payload: SignupRequest) -> AuthResponse:
-    """
-    회원가입 API (현재는 목업).
-
-    TODO:
-      - users 테이블에 username / password_hash 저장
-      - 중복 회원 검사
-      - 실제 JWT 토큰 발급
-    """
-    # 임시: username 기반 pseudo user_id / access_token 생성
-    user_id = f"user-{payload.username}"
-    access_token = f"token-{payload.username}"
-    return AuthResponse(user_id=user_id, access_token=access_token)
-
-
-@app.post("/auth/login", response_model=AuthResponse)
-async def login(payload: LoginRequest) -> AuthResponse:
-    """
-    로그인 API (현재는 목업).
-
-    TODO:
-      - users 테이블에서 username 조회 후 비밀번호 검증
-      - JWT 토큰 발급
-    """
-    # 임시: username만 있으면 로그인 성공 처리
-    user_id = f"user-{payload.username}"
-    access_token = f"token-{payload.username}"
-    return AuthResponse(user_id=user_id, access_token=access_token)
 
 
 # ─────────────────────────────────────────────────────────
@@ -160,7 +112,7 @@ async def chat_sermon(payload: ChatRequest) -> ChatResponse:
 
     return ChatResponse(
         answer=answer_block.get("text", ""),
-        references=answer_block.get("references", []),
+        references=answer_block.get("citations", []),  # answer_creator에서 citations로 반환
         scripture_refs=answer_block.get("scripture_refs", []),
         category=router_block.get("category"),
     )

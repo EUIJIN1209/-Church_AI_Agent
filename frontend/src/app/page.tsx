@@ -1,14 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { apiSermonChat, type SermonChatResponse } from "@/lib/api";
 
 type MainView = "home" | "chat";
 type ProfileMode = "research" | "counseling" | "education";
 
+// 메시지 타입
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  references?: SermonChatResponse["references"];
+  category?: string;
+  timestamp: Date;
+}
+
+// 사용자 정보 타입
+interface UserInfo {
+  userId: string;
+  email: string;
+  name: string;
+}
+
 export default function Home() {
+  const router = useRouter();
   const [mainView, setMainView] = useState<MainView>("chat");
   const [profileMode, setProfileMode] = useState<ProfileMode>("research");
+  const [user, setUser] = useState<UserInfo | null>(null);
+
+  // 로그인 상태 확인
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    const userId = localStorage.getItem("user_id");
+    const email = localStorage.getItem("user_email");
+    const name = localStorage.getItem("user_name");
+
+    if (token && userId && email) {
+      setUser({ userId, email, name: name || "" });
+    }
+  }, []);
+
+  // 로그아웃
+  const handleLogout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user_id");
+    localStorage.removeItem("user_email");
+    localStorage.removeItem("user_name");
+    setUser(null);
+  };
 
   return (
     <div className="app-shell">
@@ -59,18 +101,40 @@ export default function Home() {
 
         {/* 하단 영역 */}
         <div className="mt-4 border-t border-slate-200 pt-4">
-          <button
-            type="button"
-            className="w-full rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100"
-          >
-            로그아웃
-          </button>
-          <div className="mt-3 flex items-center justify-between rounded-full bg-slate-100 px-3 py-2">
-            <span className="text-[11px] font-medium text-slate-600">
-              라이트
-            </span>
-            <span className="h-6 w-11 rounded-full bg-white shadow-inner" />
-          </div>
+          {user ? (
+            <>
+              <div className="mb-3 px-2">
+                <p className="text-xs font-medium text-slate-800 truncate">
+                  {user.name || user.email}
+                </p>
+                <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              >
+                로그아웃
+              </button>
+            </>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => router.push("/login")}
+                className="flex-1 rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              >
+                로그인
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/signup")}
+                className="flex-1 rounded-full bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
+              >
+                회원가입
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -203,40 +267,16 @@ function HomeDashboard() {
           </ul>
         </div>
       </section>
-
-      {/* 퀵 업로드 존 */}
-      <section className="card flex flex-1 flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50/70 text-center">
-        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900/90">
-          <span className="text-lg text-white">+</span>
-        </div>
-        <h3 className="text-sm font-semibold text-slate-900">
-          주보 사진을 드래그 앤 드롭하여 업로드
-        </h3>
-        <p className="mt-1 max-w-md text-xs text-slate-500">
-          주보 이미지, 설교 요약 캡처 등을 올리면 자동으로 텍스트/OCR 분석 후 설교
-          아카이브에 정리됩니다. (현재는 UI만 구성된 상태입니다.)
-        </p>
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            className="rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-sm hover:bg-slate-800"
-          >
-            파일 선택
-          </button>
-          <button
-            type="button"
-            className="rounded-full border border-slate-300 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-white"
-          >
-            예시 주보로 테스트
-          </button>
-        </div>
-      </section>
     </div>
   );
 }
 
 function AiChatView(props: { profileMode: ProfileMode }) {
   const { profileMode } = props;
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentReferences, setCurrentReferences] = useState<SermonChatResponse["references"]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const profileLabel =
     profileMode === "research"
@@ -244,6 +284,62 @@ function AiChatView(props: { profileMode: ProfileMode }) {
       : profileMode === "counseling"
       ? "상담 모드 – 성도 상담과 적용점에 초점"
       : "교육 모드 – 이해하기 쉬운 설명과 질문지 생성에 초점";
+
+  // 스크롤 자동 이동
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // 메시지 전송 핸들러
+  const handleSendMessage = async (content: string) => {
+    if (!content.trim() || isLoading) return;
+
+    // 사용자 메시지 추가
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      const response = await apiSermonChat({
+        user_id: "guest",
+        question: content,
+        profile_mode: profileMode,
+        session_id: "default",
+      });
+
+      // AI 응답 추가
+      const assistantMessage: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: "assistant",
+        content: response.answer,
+        references: response.references,
+        category: response.category,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // 참고 설교 업데이트
+      if (response.references && response.references.length > 0) {
+        setCurrentReferences(response.references);
+      }
+    } catch (error) {
+      // 에러 메시지 추가
+      const errorMessage: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : "알 수 없는 오류"}`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="flex h-[calc(100vh-120px)] flex-col gap-4">
@@ -258,8 +354,8 @@ function AiChatView(props: { profileMode: ProfileMode }) {
           </p>
         </div>
         <div className="hidden items-center gap-2 md:flex">
-          <span className="chip">실시간 스트리밍 예정</span>
           <span className="chip">LangGraph 에이전트</span>
+          {isLoading && <span className="chip bg-blue-50 text-blue-600">응답 생성 중...</span>}
         </div>
       </section>
 
@@ -270,115 +366,119 @@ function AiChatView(props: { profileMode: ProfileMode }) {
           {/* 출처 카드 영역 */}
           <div className="mb-3 border-b border-slate-100 pb-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              참고 설교 / 주보
+              참고 설교 ({currentReferences.length}개)
             </p>
             <div className="flex gap-3 overflow-x-auto pb-1">
-              {[1, 2, 3].map((idx) => (
-                <div
-                  key={idx}
-                  className="flex min-w-[180px] flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="relative h-8 w-8 overflow-hidden rounded-md bg-slate-200">
-                      <Image
-                        src="/window.svg"
-                        alt=""
-                        fill
-                        className="object-cover opacity-60"
-                      />
+              {currentReferences.length > 0 ? (
+                currentReferences.map((ref, idx) => (
+                  <div
+                    key={ref.sermon_id || idx}
+                    className="flex min-w-[180px] flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="relative h-8 w-8 overflow-hidden rounded-md bg-slate-200 flex items-center justify-center">
+                        <span className="text-xs text-slate-500">{idx + 1}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="line-clamp-1 text-xs font-semibold text-slate-800">
+                          {ref.title || "제목 없음"}
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {ref.date || "날짜 미상"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="line-clamp-1 text-xs font-semibold text-slate-800">
-                        고난 속에서 발견하는 은혜
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        2024-03-10 · 주보 이미지
-                      </span>
-                    </div>
+                    {ref.scripture && (
+                      <p className="text-[11px] text-slate-600">
+                        {ref.scripture}
+                      </p>
+                    )}
                   </div>
-                  <p className="line-clamp-2 text-[11px] text-slate-600">
-                    시편 23편을 중심으로, 고난의 골짜기를 지날 때 함께
-                    하시는 하나님을 묵상한 설교입니다.
-                  </p>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-xs text-slate-400">질문을 입력하면 관련 설교가 표시됩니다.</p>
+              )}
             </div>
           </div>
 
-          {/* 대화 영역 (목업) */}
+          {/* 대화 영역 */}
           <div className="flex flex-1 flex-col gap-4 overflow-y-auto pr-1 text-sm">
-            <div className="rounded-2xl bg-slate-900 px-4 py-3 text-sm text-slate-50 max-w-[80%]">
-              다음 주일에 “고난과 위로” 주제로 설교를 준비하려고 하는데, 기존
-              설교와 연결해서 도와줄 수 있을까요?
-            </div>
-            <div className="max-w-[80%] rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-800">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                제안 outline
-              </p>
-              <p className="mb-2 text-sm">
-                <span className="font-semibold">
-                  1. 고난의 현실 – “사망의 음침한 골짜기”
-                </span>
-                <br />
-                시편 23편 설교(2024.03.10)에서 사용하신 예화를 다시 연결하여,
-                성도들이 실제로 겪는 고난의 구체적인 모습을 떠올리게 합니다.
-              </p>
-              <p className="mb-2 text-sm">
-                <span className="font-semibold">
-                  2. 함께 하시는 주님 – 임마누엘의 위로
-                </span>
-                <br />
-                고린도후서 1장 3–4절을 추가 본문으로 제안하며, “위로받은 자가
-                또 다른 이의 위로가 된다”는 흐름으로 이어갈 수 있습니다.
-              </p>
-              <p className="mb-1 text-xs text-slate-500">
-                성경 구절:{" "}
-                <span className="font-semibold">
-                  시편 23편, 고린도후서 1장 3-4절
-                </span>
-              </p>
-            </div>
+            {messages.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center text-slate-400">
+                <div className="text-center">
+                  <p className="text-lg mb-2">대덕교회 설교 AI 에이전트</p>
+                  <p className="text-sm">설교 준비, 성경 연구, 상담에 관한 질문을 입력해주세요.</p>
+                </div>
+              </div>
+            ) : (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
+                    msg.role === "user"
+                      ? "bg-slate-900 text-slate-50 self-end"
+                      : "bg-slate-50 text-slate-800 self-start"
+                  }`}
+                >
+                  {msg.role === "assistant" && msg.category && (
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      [{msg.category}]
+                    </p>
+                  )}
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              ))
+            )}
+            {isLoading && (
+              <div className="max-w-[80%] rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-800 self-start">
+                <div className="flex items-center gap-2">
+                  <div className="animate-pulse">응답 생성 중...</div>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
 
           {/* 하단 입력창 */}
           <div className="mt-3 border-t border-slate-200 pt-3">
-            <ChatInput />
+            <ChatInput onSend={handleSendMessage} isLoading={isLoading} />
           </div>
         </div>
 
-        {/* 우측 패널: 프로젝트/세션 리스트(목업) */}
+        {/* 우측 패널: 프로젝트/세션 리스트 */}
         <aside className="card flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              최근 세션
+              대화 기록 ({messages.length}개)
             </span>
             <button
               type="button"
+              onClick={() => {
+                setMessages([]);
+                setCurrentReferences([]);
+              }}
               className="text-[11px] font-medium text-slate-500 hover:text-slate-800"
             >
-              새 프로젝트
+              대화 초기화
             </button>
           </div>
-          <div className="space-y-2 text-xs">
-            {[
-              "사순절 시리즈 – 십자가 묵상",
-              "청년부 수련회 프로그램",
-              "고난주간 특별새벽기도회",
-              "새가족반 교육 커리큘럼",
-            ].map((title) => (
-              <button
-                key={title}
-                type="button"
-                className="flex w-full flex-col rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-left hover:bg-white"
+          <div className="space-y-2 text-xs max-h-[400px] overflow-y-auto">
+            {messages.filter(m => m.role === "user").slice(-5).map((msg) => (
+              <div
+                key={msg.id}
+                className="flex w-full flex-col rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2"
               >
-                <span className="line-clamp-1 text-[12px] font-medium text-slate-800">
-                  {title}
+                <span className="line-clamp-2 text-[12px] font-medium text-slate-800">
+                  {msg.content}
                 </span>
                 <span className="mt-1 text-[11px] text-slate-500">
-                  최근 대화 요약가 여기에 표시됩니다.
+                  {msg.timestamp.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
                 </span>
-              </button>
+              </div>
             ))}
+            {messages.length === 0 && (
+              <p className="text-slate-400 text-center py-4">아직 대화가 없습니다.</p>
+            )}
           </div>
         </aside>
       </section>
@@ -386,45 +486,62 @@ function AiChatView(props: { profileMode: ProfileMode }) {
   );
 }
 
-function ChatInput() {
+function ChatInput(props: { onSend: (message: string) => void; isLoading: boolean }) {
+  const { onSend, isLoading } = props;
+  const [input, setInput] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.trim() && !isLoading) {
+      onSend(input.trim());
+      setInput("");
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-2">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-2">
       <div className="flex items-center gap-2 text-[11px] text-slate-500">
         <span>무엇을 도와드릴까요?</span>
         <span className="rounded-full bg-slate-100 px-2 py-0.5">
-          예) “마태복음 5장 3절로 청년부 설교 outline 만들어줘”
+          예) "하나님의 사랑에 대한 설교를 찾아줘"
         </span>
       </div>
       <div className="flex items-center rounded-2xl border border-slate-300 bg-white px-3 py-2 shadow-sm">
-        <button
-          type="button"
-          className="rounded-full px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
-        >
-          파일 첨부
-        </button>
         <input
           type="text"
-          placeholder="질문을 입력하세요. 설교 본문, 상황, 대상(청년/청소년/장년)을 함께 알려주면 더 정확하게 도와드려요."
-          className="ml-2 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="질문을 입력하세요. 설교 본문, 상황, 대상을 함께 알려주면 더 정확하게 도와드려요."
+          className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+          disabled={isLoading}
         />
         <button
-          type="button"
-          className="ml-2 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-white hover:bg-slate-800"
+          type="submit"
+          disabled={isLoading || !input.trim()}
+          className="ml-2 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span className="text-xs">▶</span>
+          <span className="text-xs">{isLoading ? "..." : "▶"}</span>
         </button>
       </div>
       <div className="flex items-center justify-between text-[10px] text-slate-400">
         <div className="flex gap-2">
-          <span>나눔 질문 자동 생성</span>
+          <span>설교 검색</span>
           <span>·</span>
-          <span>과거 설교 연결</span>
+          <span>성경 연구</span>
           <span>·</span>
-          <span>성도 상담용 답변</span>
+          <span>상담 지원</span>
         </div>
-        <span>0 / 3000</span>
+        <span>{input.length} / 3000</span>
       </div>
-    </div>
+    </form>
   );
 }
 

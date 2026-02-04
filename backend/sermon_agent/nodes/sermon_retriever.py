@@ -83,7 +83,7 @@ def _get_embeddings_model() -> HuggingFaceEmbeddings:
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )
-        print(f"  [Embedding] 모델 로딩 완료 ({EMBEDDING_DIMENSION}차원)", flush=True)
+        # print(f"  [Embedding] 모델 로딩 완료 ({EMBEDDING_DIMENSION}차원)", flush=True)
     return _embeddings_model
 
 
@@ -100,7 +100,7 @@ def _get_connection_pool() -> ConnectionPool:
             max_idle=60,
             reconnect_timeout=10,
         )
-        print("  [DB Pool] 연결 풀 초기화 완료", flush=True)
+        # print("  [DB Pool] 연결 풀 초기화 완료", flush=True)
     return _connection_pool
 
 
@@ -351,7 +351,7 @@ def sermon_retriever_node(state: State) -> Dict[str, Any]:
         }
 
     elapsed = time.time() - start_time
-    print(f"[retriever] completed in {elapsed:.2f}s", flush=True)
+    # print(f"[retriever] completed in {elapsed:.2f}s", flush=True)
 
     return {
         "rag_snippets": snippets,

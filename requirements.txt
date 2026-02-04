@@ -115,4 +115,6 @@ zstandard==0.24.0
 langgraph==0.2.68
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+bcrypt==4.2.0
+PyJWT==2.9.0
 
